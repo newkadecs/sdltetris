@@ -91,23 +91,21 @@ void holdPiece()
 {
 	if (!usedHold)
 	{
+		usedHold = true;
 		if (held == NULL)
 		{
 			held = faillingTetr;
 			faillingTetr = nullptr;
-			usedHold = true;
 		}
 		else
 		{
 			faillingTetr = held;
 			held = NULL;
-			usedHold = true;
 		}
 	}
 }
 
 void createTetr(int constructId) {
-	usedHold = false;
 	Tetromino* tetr = new Tetromino();
 
 	tetr->constructIndex = constructId;
@@ -159,6 +157,8 @@ void toClipboard(const std::string& s) {
 
 float currentTime = 0;
 float simulatedTime = 0;
+
+float rotateTime = 0;
 
 
 int level;
@@ -235,6 +235,20 @@ Tetromino* lowestPos() {
 	return copy;
 }
 
+std::vector<Globals::lineClearAnim> lineClearAnims;
+
+void lineClearAnim(int y)
+{
+	Globals::lineClearAnim anim;
+	anim.dur = 1000;
+	anim.rect.x = boardX;
+	anim.rect.y = y;
+	anim.rect.w = 160;
+	anim.rect.h = 16;
+
+	lineClearAnims.push_back(anim);
+}
+
 void resortLanes()
 {
 	std::vector<TetrominoPiece> pieces;
@@ -256,6 +270,7 @@ void resortLanes()
 
 void placePiece()
 {
+	usedHold = false;
 	for (TetrominoPiece piece : faillingTetr->pieces)
 	{
 		piece.rect.x = faillingTetr->rect.x + piece.rect.x;
@@ -263,19 +278,17 @@ void placePiece()
 
 		groundedPieces[findLaneOfPiece(piece.rect.y)].push_back(piece);
 	}
+	resortLanes();
 	// check for line clears
-	for(TetrominoPiece piece : faillingTetr->pieces)
+	for(int lane = 0; lane < 21; lane++)
 	{
-		piece.rect.x = faillingTetr->rect.x + piece.rect.x;
-		piece.rect.y = faillingTetr->rect.y + piece.rect.y;
-		int lane = findLaneOfPiece(piece.rect.y);
-		std::vector<TetrominoPiece>& p = groundedPieces[lane];
-		std::cout << "Lane " << lane << " pieces: " << p.size() << std::endl;
-		if (p.size() == 10)
+		std::vector<TetrominoPiece>& pieces = groundedPieces[lane];
+		if (pieces.size() == 10)
 		{
-			std::cout << "Cleared that lane" << std::endl;
-			p.clear();
-			for(int i = 0; i < lane; i++)
+			std::cout << "Cleared " << pieces.size() << std::endl;
+			pieces.clear();
+			lineClearAnim(pieces[0].rect.y);
+			for(int i = 0; i < lane + 1; i++)
 			{
 				for(int pi = 0; pi < groundedPieces[i].size(); pi++)
 				{
@@ -286,6 +299,8 @@ void placePiece()
 		}
 	}
 }
+
+bool place = false;
 
 int WinMain(HINSTANCE hInstance,
 	HINSTANCE hPrevInstance,
@@ -314,6 +329,7 @@ int WinMain(HINSTANCE hInstance,
 
 	bool skip = false;
 	
+
 	while (run)
 	{
 		const Uint32 startTime = SDL_GetTicks();
@@ -333,6 +349,7 @@ int WinMain(HINSTANCE hInstance,
 					case SDLK_UP:
 						if (faillingTetr)
 						{
+							rotateTime = 500;
 							faillingTetr->rotate();
 							checkBoardCol();
 						}
@@ -352,6 +369,7 @@ int WinMain(HINSTANCE hInstance,
 						}
 						break;
 					case SDLK_DOWN:
+						rotateTime = 500;
 						skip = true;
 						break;
 					case SDLK_c:
@@ -390,6 +408,10 @@ int WinMain(HINSTANCE hInstance,
 
 		currentTime += deltaTime;
 
+		if (rotateTime > 0)
+		{
+			rotateTime -= deltaTime;
+		}
 
 		if (faillingTetr)
 		{
@@ -407,6 +429,41 @@ int WinMain(HINSTANCE hInstance,
 			// collision
 
 			bool die = false;
+			bool willGoUnder = false;
+			for (TetrominoPiece piece : faillingTetr->pieces)
+			{
+				if (faillingTetr->rect.y + piece.rect.y >= bottomBoard - 16)
+					willGoUnder = true;
+			}
+
+			for (int i = 0; i < 21; i++)
+			{
+				for (TetrominoPiece& piece : groundedPieces[i])
+				{
+					if (faillingTetr->checkCol(piece))
+					{
+						willGoUnder = true;
+					}
+				}
+			}
+			if (!willGoUnder)
+			{
+				if (!skip)
+					while (currentTime > simulatedTime)
+					{
+						faillingTetr->storeY++;
+						faillingTetr->rect.y = align(faillingTetr->storeY, 16);
+						simulatedTime += 1 / cellFrames[level][0];
+						rotateTime = 500;
+					}
+
+				if (skip && SDL_GetTicks() % 10 == 0)
+				{
+					rotateTime = 500;
+					faillingTetr->storeY++;
+					faillingTetr->rect.y = align(faillingTetr->storeY, 16);
+				}
+			}
 
 			for (int i = 0; i < 21; i++)
 			{
@@ -425,7 +482,7 @@ int WinMain(HINSTANCE hInstance,
 
 			for (TetrominoPiece piece : faillingTetr->pieces)
 			{
-				if (faillingTetr->rect.y + piece.rect.y >= bottomBoard - 16)
+				if (faillingTetr->rect.y + piece.rect.y >= bottomBoard - 16 && rotateTime <= 0)
 				{
 					placePiece();
 					faillingTetr->rect.y = bottomBoard - 16;
@@ -439,26 +496,13 @@ int WinMain(HINSTANCE hInstance,
 				delete faillingTetr;
 				faillingTetr = nullptr;
 			}
+
 			if (faillingTetr)
 			{
-				if (!skip)
-					while (currentTime > simulatedTime)
-					{
-						faillingTetr->storeY++;
-						faillingTetr->rect.y = align(faillingTetr->storeY, 16);
-
-						simulatedTime += 1 / cellFrames[level][0];
-					}
-
-				if (skip && SDL_GetTicks() % 10 == 0)
-				{
-					faillingTetr->storeY++;
-					faillingTetr->rect.y = align(faillingTetr->storeY, 16);
-				}
-			
 				faillingTetr->draw();
 				ghostTetr->draw();
 			}
+			
 
 		}
 		else
@@ -482,6 +526,27 @@ int WinMain(HINSTANCE hInstance,
 			}
 		}
 		// render box
+
+		bool remove = false;
+		int index = 0;
+
+		for(Globals::lineClearAnim& anim : lineClearAnims)
+		{
+			anim.time += deltaTime * 5;
+			float f = anim.time / anim.dur;
+			float alphaValue = 255 - (255 * f);
+			SDL_SetRenderDrawColor(Globals::renderer,255,255,255,alphaValue);
+			SDL_RenderFillRectF(Globals::renderer,&anim.rect);
+			if (f >= 1)
+			{
+				remove = true;
+			}
+			index++;
+		}
+		if (remove)
+		{
+			lineClearAnims.erase(lineClearAnims.begin() + index - 1);
+		}
 
 		SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
 

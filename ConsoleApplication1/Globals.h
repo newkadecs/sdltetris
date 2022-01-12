@@ -10,4 +10,11 @@ public:
 		int b;
 		int a;
 	};
+
+	
+	struct lineClearAnim {
+		float time;
+		float dur;
+		SDL_FRect rect;
+	};
 };
