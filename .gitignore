@@ -30,3 +30,18 @@
 *.exe
 *.out
 *.app
+
+# I'm sorry
+bin/
+ConsoleApplication1/Debug
+dev/
+etc/
+home/
+sbin/
+tmp/
+usr/
+var/
+lib/
+Cygwin.bat
+Cygwin.ico
+Cygwin-Terminal.ico
